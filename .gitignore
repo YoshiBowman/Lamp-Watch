@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+*.dmg
+*.zip
+.DS_Store
+lampdata.json
+lampwatch-settings.json

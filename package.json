@@ -1,0 +1,49 @@
+{
+  "name": "lampwatch",
+  "version": "1.0.0",
+  "description": "Fixture lamp hour tracking for live production",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac --dir",
+    "dist": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.lampwatch.app",
+    "productName": "LampWatch",
+    "icon": "assets/icon.png",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "LampWatch",
+      "background": null,
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "assets/**"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "nodemailer": "^8.0.10"
+  }
+}

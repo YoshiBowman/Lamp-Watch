@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://unpkg.com;" />
+  <title>LampWatch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body {
+      background: #0b0e17;
+      color: #c8d4e8;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      -webkit-font-smoothing: antialiased;
+      overflow-y: auto;
+    }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0b0e17; }
+    ::-webkit-scrollbar-thumb { background: #1e2a40; border-radius: 3px; }
+    input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.4); cursor: pointer; }
+    select option { background: #0f1520; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ─── Manufacturer Lamp Data ───────────────────────────────────────────────
+    // Source: martin.com official product specifications
+    const FIXTURE_LIBRARY = [
+      // ── MAC Viper Series (1000W short-arc discharge) ──────────────────────
+      { brand:"Martin", model:"MAC Viper Profile",      lamp:"Osram Lok-it! 1000/PS Brilliant",    hours:750  },
+      { brand:"Martin", model:"MAC Viper Performance",  lamp:"Osram Lok-it! 1000/PS Brilliant",    hours:750  },
+      { brand:"Martin", model:"MAC Viper Wash",         lamp:"Osram Lok-it! 1000/PS Brilliant",    hours:750  },
+      { brand:"Martin", model:"MAC Viper AirFX",        lamp:"Osram Lok-it! 1000/PS Brilliant",    hours:750  },
+      { brand:"Martin", model:"MAC Viper Beam",         lamp:"Osram Lok-it! 1000/PS Brilliant",    hours:750  },
+      // ── MAC III Series (1500W short-arc discharge) ────────────────────────
+      { brand:"Martin", model:"MAC III Profile",        lamp:"Osram HTI 1500W/60/P50 Lok-it",      hours:750  },
+      { brand:"Martin", model:"MAC III Performance",    lamp:"Osram HTI 1500W/60/P50 Lok-it",      hours:750  },
+      { brand:"Martin", model:"MAC III Wash",           lamp:"Osram HTI 1500W/60/P50 Lok-it",      hours:750  },
+      { brand:"Martin", model:"MAC III AirFX",          lamp:"Osram HTI 1500W/60/P50 Lok-it",      hours:750  },
+      // ── MAC 2000 Series ───────────────────────────────────────────────────
+      { brand:"Martin", model:"MAC 2000 Profile",       lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      { brand:"Martin", model:"MAC 2000 Profile II",    lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      { brand:"Martin", model:"MAC 2000 Performance",   lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      { brand:"Martin", model:"MAC 2000 Performance II",lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      { brand:"Martin", model:"MAC 2000 Wash",          lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      { brand:"Martin", model:"MAC 2000 Wash XB",       lamp:"Osram HTI 1500W/D7/60 SharXS",      hours:750  },
+      { brand:"Martin", model:"MAC 2000 Beam",          lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      { brand:"Martin", model:"MAC 2000 Beam XB",       lamp:"Osram HTI 1500W/D7/60 SharXS",      hours:750  },
+      { brand:"Martin", model:"MAC 2000E Profile",      lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      { brand:"Martin", model:"MAC 2000E Wash",         lamp:"Philips MSR 1200 SA/DE Gold",        hours:750  },
+      // ── MAC 1200 (1200W discharge) ────────────────────────────────────────
+      { brand:"Martin", model:"MAC 1200",               lamp:"Philips MSR 1200 SA/2",              hours:750  },
+      // ── MAC 700 Series (700W short-arc discharge) ─────────────────────────
+      { brand:"Martin", model:"MAC 700 Profile",        lamp:"Osram HTI 700/D4/75",                hours:750  },
+      { brand:"Martin", model:"MAC 700 Wash",           lamp:"Osram HTI 700/D4/75",                hours:750  },
+      // ── MAC Axiom Hybrid (440W short-arc discharge) ───────────────────────
+      { brand:"Martin", model:"MAC Axiom Hybrid",       lamp:"Osram Sirius HRI 440W",              hours:1500 },
+      // ── RUSH MH Series (discharge only) ──────────────────────────────────
+      { brand:"Martin", model:"RUSH MH 3 Beam",         lamp:"Philips MSD Platinum 5R",            hours:2000 },
+      { brand:"Martin", model:"RUSH MH 4 Beam",         lamp:"Osram Sirius HRI 132W",              hours:6000 },
+      { brand:"Martin", model:"RUSH MH 7 Hybrid",       lamp:"Philips MSD Platinum 11R 250W",      hours:2000 },
+      { brand:"Martin", model:"RUSH MH 11 Beam",        lamp:"Philips MSD Platinum 11R 250W",      hours:2000 },
+      // ── MAC 600 Series (575W discharge) ──────────────────────────────────
+      { brand:"Martin", model:"MAC 600",                lamp:"Philips MSR 575/2",                  hours:1000 },
+      { brand:"Martin", model:"MAC 600 E NT",           lamp:"Philips MSR 575/2",                  hours:1000 },
+      // ── MAC 575 Krypton (575W discharge) ─────────────────────────────────
+      { brand:"Martin", model:"MAC 575 Krypton",        lamp:"GE CSR 575/S/DE/70",                 hours:750  },
+      // ── MAC 550 (400W short-arc discharge) ───────────────────────────────
+      { brand:"Martin", model:"MAC 550",                lamp:"Osram HTI 400W/D3",                  hours:750  },
+      // ── MAC 500 (575W discharge) ──────────────────────────────────────────
+      { brand:"Martin", model:"MAC 500",                lamp:"Philips MSR 575/2",                  hours:1000 },
+      // ── MAC TW1 (1200W tungsten halogen) ─────────────────────────────────
+      { brand:"Martin", model:"MAC TW1",                lamp:"Philips 1200W FastFit (tungsten)",   hours:2000 },
+      // ── MAC 300 (250W discharge) ──────────────────────────────────────────
+      { brand:"Martin", model:"MAC 300",                lamp:"Philips MSD 250/2",                  hours:2000 },
+      // ── MAC 250 Series (250W discharge) ──────────────────────────────────
+      { brand:"Martin", model:"MAC 250",                lamp:"Sylvania BA 250/2",                  hours:3000 },
+      { brand:"Martin", model:"MAC 250+",               lamp:"Philips MSD 250/2",                  hours:2000 },
+      { brand:"Martin", model:"MAC 250 Wash",           lamp:"Sylvania BA 250/2",                  hours:3000 },
+      { brand:"Martin", model:"MAC 250 Entour",         lamp:"Sylvania BA 250/2",                  hours:3000 },
+      { brand:"Martin", model:"MAC 250 Krypton",        lamp:"Sylvania BA 250/2",                  hours:3000 },
+      { brand:"Martin", model:"MAC 250 Beam",           lamp:"Sylvania BA 250/2",                  hours:3000 },
+    ];
+
+    const BRANDS = [...new Set(FIXTURE_LIBRARY.map(f => f.brand))];
+    const genId = () => Math.random().toString(36).slice(2, 10);
+
+    const calcStatus = (entry) => {
+      const now = new Date();
+      const changed = new Date(entry.changedDate);
+      const daysElapsed = Math.max(0, (now - changed) / (1000 * 60 * 60 * 24));
+      const hoursElapsed = daysElapsed * (entry.hoursPerWeek / 7);
+      const pct = (hoursElapsed / entry.lampHours) * 100;
+      const hoursRemaining = Math.max(0, entry.lampHours - hoursElapsed);
+      const daysRemaining = hoursRemaining / (entry.hoursPerWeek / 7);
+      return { pct, hoursElapsed, hoursRemaining, daysRemaining };
+    };
+
+    const statusColor = (pct) => {
+      if (pct >= 100) return { bar:"#ff3b3b", label:"OVERDUE",  glow:"#ff3b3b33" };
+      if (pct >= 85)  return { bar:"#ff8c00", label:"CRITICAL", glow:"#ff8c0033" };
+      if (pct >= 65)  return { bar:"#f5c518", label:"WARNING",  glow:"#f5c51833" };
+      return               { bar:"#3edd8e", label:"OK",        glow:"#3edd8e22" };
+    };
+
+    // ─── Circular Gauge ───────────────────────────────────────────────────────
+    function Gauge({ pct, color }) {
+      const r=28, cx=34, cy=34, circ=2*Math.PI*r;
+      const capped = Math.min(pct,100);
+      const dash = (capped/100)*circ;
+      return (
+        <svg width="68" height="68" style={{flexShrink:0}}>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e2330" strokeWidth="6"/>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="6"
+            strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+            transform={`rotate(-90 ${cx} ${cy})`}
+            style={{transition:"stroke-dasharray 0.6s ease"}}/>
+          <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="middle"
+            fill={color} fontSize="11" fontFamily="JetBrains Mono" fontWeight="700">
+            {pct>=100 ? "OVR" : `${Math.round(pct)}%`}
+          </text>
+        </svg>
+      );
+    }
+
+    // ─── Add/Edit Modal ───────────────────────────────────────────────────────
+    function Modal({ initial, onSave, onClose }) {
+      const [brand, setBrand]           = useState(initial?.brand || "Martin");
+      const [modelIdx, setModelIdx]     = useState(0);
+      const [isCustom, setIsCustom]     = useState(initial ? initial.isCustom===true : false);
+      const [customModel, setCustomModel] = useState(initial?.model || "");
+      const [customLamp, setCustomLamp]   = useState(initial?.lamp || "");
+      const [customHours, setCustomHours] = useState(initial?.lampHours || 750);
+      const [changedDate, setChangedDate] = useState(initial?.changedDate || new Date().toISOString().slice(0,10));
+      const [hoursPerWeek, setHoursPerWeek] = useState(initial?.hoursPerWeek || 10);
+      const [label, setLabel]           = useState(initial?.label || "");
+      const [quantity, setQuantity]     = useState(1);
+
+      const brandModels = FIXTURE_LIBRARY.filter(f => f.brand === brand);
+      const selected    = brandModels[modelIdx] || brandModels[0];
+
+      const handleSave = () => {
+        const model  = isCustom ? customModel  : selected.model;
+        const lamp   = isCustom ? customLamp   : selected.lamp;
+        const lh     = isCustom ? Number(customHours) : selected.hours;
+        if (!model || !lamp || !lh || !changedDate || !hoursPerWeek) return;
+        const qty = initial ? 1 : Math.max(1, Math.min(99, Number(quantity) || 1));
+        if (qty === 1) {
+          onSave({ id: initial?.id || genId(), brand: isCustom?"Custom":brand, model, lamp, lampHours:lh, changedDate, hoursPerWeek:Number(hoursPerWeek), label, isCustom });
+        } else {
+          for (let i = 1; i <= qty; i++) {
+            const unitLabel = label ? `${label} ${i}` : ``;
+            onSave({ id: genId(), brand: isCustom?"Custom":brand, model, lamp, lampHours:lh, changedDate, hoursPerWeek:Number(hoursPerWeek), label: unitLabel, isCustom });
+          }
+        }
+        onClose();
+      };
+
+      return (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={S.mHead}>
+              <span style={S.mTitle}>{initial?"EDIT FIXTURE":"ADD FIXTURE"}</span>
+              <button onClick={onClose} style={S.closeBtn}>✕</button>
+            </div>
+
+            <label style={S.lbl}>LABEL / UNIT ID <span style={{color:"#2a3a5a"}}>(optional)</span></label>
+            <input style={S.inp} value={label} onChange={e=>setLabel(e.target.value)} placeholder="e.g. FOH L1, Truss #3" />
+
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+              <input type="checkbox" id="custom" checked={isCustom} onChange={e=>setIsCustom(e.target.checked)} />
+              <label htmlFor="custom" style={{...S.lbl,marginBottom:0,cursor:"pointer"}}>CUSTOM FIXTURE</label>
+            </div>
+
+            {isCustom ? (<>
+              <label style={S.lbl}>FIXTURE MODEL</label>
+              <input style={S.inp} value={customModel} onChange={e=>setCustomModel(e.target.value)} placeholder="e.g. My Custom Spot"/>
+              <label style={S.lbl}>LAMP TYPE</label>
+              <input style={S.inp} value={customLamp} onChange={e=>setCustomLamp(e.target.value)} placeholder="e.g. MSR Gold 1200"/>
+              <label style={S.lbl}>RATED LAMP HOURS</label>
+              <input style={S.inp} type="number" value={customHours} onChange={e=>setCustomHours(e.target.value)} min={1}/>
+            </>) : (<>
+              <label style={S.lbl}>BRAND</label>
+              <select style={S.inp} value={brand} onChange={e=>{setBrand(e.target.value);setModelIdx(0);}}>
+                {BRANDS.map(b=><option key={b}>{b}</option>)}
+              </select>
+              <label style={S.lbl}>MODEL</label>
+              <select style={S.inp} value={modelIdx} onChange={e=>setModelIdx(Number(e.target.value))}>
+                {brandModels.map((f,i)=><option key={i} value={i}>{f.model}</option>)}
+              </select>
+              <div style={S.specBox}>
+                <span style={S.specItem}><span style={S.specKey}>LAMP</span>{selected?.lamp}</span>
+                <span style={S.specItem}><span style={S.specKey}>RATED</span>{selected?.hours} hrs</span>
+              </div>
+            </>)}
+
+            <label style={S.lbl}>LAMP CHANGED DATE</label>
+            <input style={S.inp} type="date" value={changedDate} onChange={e=>setChangedDate(e.target.value)}/>
+
+            <label style={S.lbl}>AVG HOURS ON PER WEEK</label>
+            <input style={S.inp} type="number" value={hoursPerWeek} onChange={e=>setHoursPerWeek(e.target.value)} min={0.5} max={168} step={0.5}/>
+            <p style={S.hint}>Include rehearsals, services, and programming time</p>
+
+            {!initial && (<>
+              <label style={S.lbl}>QUANTITY</label>
+              <input style={S.inp} type="number" value={quantity} onChange={e=>setQuantity(e.target.value)} min={1} max={99} step={1}/>
+              <p style={S.hint}>Adds multiple units with the same settings. If a label is set, units will be numbered automatically (e.g. "FOH 1", "FOH 2").</p>
+            </>)}
+
+            <button onClick={handleSave} style={S.saveBtn}>{!initial && quantity > 1 ? `ADD ${quantity} FIXTURES` : initial ? "SAVE FIXTURE" : "ADD FIXTURE"}</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── App ──────────────────────────────────────────────────────────────────
+    function App() {
+      const [fixtures, setFixtures]               = useState([]);
+      const [showModal, setShowModal]             = useState(false);
+      const [editTarget, setEditTarget]           = useState(null);
+      const [filter, setFilter]                   = useState("ALL");
+      const [sortBy, setSortBy]                   = useState("pct");
+      const [loaded, setLoaded]                   = useState(false);
+      const [globalHours, setGlobalHours]         = useState(10);
+      const [globalHoursEnabled, setGlobalHoursEnabled] = useState(false);
+      const [showSettings, setShowSettings]       = useState(false);
+      const [settings, setSettings]               = useState({ startup:true, slack:{enabled:false,webhookUrl:''}, resend:{enabled:false,apiKey:'',to:'',from:''} });
+
+      // Effective hours/week for a fixture (global override or per-fixture)
+      const effectiveHPW = f => (globalHoursEnabled && globalHours) ? Number(globalHours) : f.hoursPerWeek;
+
+      // Load from localStorage
+      useEffect(() => {
+        try {
+          const saved = localStorage.getItem("lampwatch-fixtures");
+          if (saved) setFixtures(JSON.parse(saved));
+          const gs = localStorage.getItem("lampwatch-global");
+          if (gs) { const g = JSON.parse(gs); setGlobalHours(g.hours||10); setGlobalHoursEnabled(g.enabled||false); }
+        } catch {}
+        if (window.electronAPI) {
+          window.electronAPI.loadSettings().then(s => { if (s) setSettings(s); });
+        }
+        setLoaded(true);
+      }, []);
+
+      // Save to localStorage + sync to file for background notifications
+      useEffect(() => {
+        if (!loaded) return;
+        localStorage.setItem("lampwatch-fixtures", JSON.stringify(fixtures));
+        localStorage.setItem("lampwatch-global", JSON.stringify({ hours: globalHours, enabled: globalHoursEnabled }));
+        window.electronAPI?.saveData({ fixtures, globalHours, globalHoursEnabled });
+      }, [fixtures, globalHours, globalHoursEnabled, loaded]);
+
+      const sendNotif = (title, body) => {
+        if (window.electronAPI) window.electronAPI.notify(title, body);
+      };
+
+      const addFixture    = f => setFixtures(p => [...p, f]);
+      const updateFixture = f => setFixtures(p => p.map(x => x.id===f.id ? f : x));
+      const deleteFixture = id => { if (window.confirm("Remove this fixture?")) setFixtures(p=>p.filter(x=>x.id!==id)); };
+
+      const resetLamp = id => {
+        const fx = fixtures.find(x=>x.id===id);
+        setFixtures(p=>p.map(x=>x.id===id ? {...x, changedDate:new Date().toISOString().slice(0,10)} : x));
+        sendNotif("Lamp Reset ✓", `${fx?.model}${fx?.label ? " ("+fx.label+")" : ""} — timer reset to today.`);
+      };
+
+      const withStatus = fixtures.map(f => ({...f, ...calcStatus({...f, hoursPerWeek: effectiveHPW(f)})}));
+      const overdue  = withStatus.filter(f=>f.pct>=100).length;
+      const critical = withStatus.filter(f=>f.pct>=85&&f.pct<100).length;
+      const warning  = withStatus.filter(f=>f.pct>=65&&f.pct<85).length;
+
+      const filtered = withStatus
+        .filter(f => {
+          if (filter==="OVERDUE")  return f.pct>=100;
+          if (filter==="CRITICAL") return f.pct>=85&&f.pct<100;
+          if (filter==="WARNING")  return f.pct>=65&&f.pct<85;
+          if (filter==="OK")       return f.pct<65;
+          return true;
+        })
+        .sort((a,b) => sortBy==="pct" ? b.pct-a.pct : a.model.localeCompare(b.model));
+
+      const chips = [
+        {key:"ALL",      label:"ALL",      count:withStatus.length,                      color:"#8899bb"},
+        {key:"OVERDUE",  label:"OVERDUE",  count:overdue,                                color:"#ff3b3b"},
+        {key:"CRITICAL", label:"CRITICAL", count:critical,                               color:"#ff8c00"},
+        {key:"WARNING",  label:"WARNING",  count:warning,                                color:"#f5c518"},
+        {key:"OK",       label:"OK",       count:withStatus.length-overdue-critical-warning, color:"#3edd8e"},
+      ];
+
+      return (
+        <div style={S.root}>
+          <div style={S.scanlines}/>
+          <div style={S.wrap}>
+
+            {/* Header */}
+            <div style={S.header}>
+              <div>
+                <div style={S.logo}>
+                  <span style={S.logoIcon}>◈</span>
+                  <span style={S.logoText}>LAMP<span style={S.logoAccent}>WATCH</span></span>
+                </div>
+                <div style={S.subhead}>Fixture Lamp Hour Tracking System</div>
+              </div>
+              <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"#0a0d14",border:`1px solid ${globalHoursEnabled?"#2a5aaa":"#1a2540"}`,borderRadius:4,padding:"7px 12px"}}>
+                  <input type="checkbox" id="globalToggle" checked={globalHoursEnabled} onChange={e=>setGlobalHoursEnabled(e.target.checked)} style={{cursor:"pointer",accentColor:"#4a8fff"}}/>
+                  <label htmlFor="globalToggle" style={{fontSize:10,letterSpacing:2,color:globalHoursEnabled?"#7aaaee":"#3a4a6a",cursor:"pointer",userSelect:"none"}}>GLOBAL HRS/WK</label>
+                  <input type="number" value={globalHours} onChange={e=>setGlobalHours(e.target.value)}
+                    min={0.5} max={168} step={0.5} disabled={!globalHoursEnabled}
+                    style={{width:44,background:"transparent",border:"none",outline:"none",color:globalHoursEnabled?"#c8d4e8":"#3a4a6a",fontSize:13,fontFamily:"inherit",fontWeight:800,textAlign:"center",cursor:globalHoursEnabled?"text":"default"}}/>
+                  <span style={{fontSize:10,color:globalHoursEnabled?"#4a6a8a":"#2a3a55",letterSpacing:1}}>HRS</span>
+                </div>
+                <button onClick={()=>setShowSettings(true)} style={S.gearBtn} title="Settings">⚙</button>
+                <button onClick={()=>{setEditTarget(null);setShowModal(true);}} style={S.addBtn}>+ ADD FIXTURE</button>
+              </div>
+            </div>
+
+            {/* Summary chips */}
+            <div style={S.summaryBar}>
+              {chips.map(c=>(
+                <button key={c.key} onClick={()=>setFilter(c.key)}
+                  style={{...S.chip, borderColor:filter===c.key?c.color:"transparent", color:c.color}}>
+                  <span style={{...S.dot, background:c.color}}/>
+                  {c.label}
+                  <span style={S.chipCount}>{c.count}</span>
+                </button>
+              ))}
+              <div style={{flex:1}}/>
+              <select style={S.sortSel} value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+                <option value="pct">Sort: % Used</option>
+                <option value="name">Sort: Model</option>
+              </select>
+            </div>
+
+            {/* Empty state */}
+            {filtered.length===0 && loaded && (
+              <div style={S.empty}>
+                <div style={{fontSize:52,color:"#1e2a40",marginBottom:12}}>◈</div>
+                <div style={{fontSize:15,color:"#4a5a7a",letterSpacing:3,marginBottom:6}}>NO FIXTURES TRACKED</div>
+                <div style={{fontSize:11,color:"#2a3a5a",letterSpacing:1,marginBottom:20}}>Add your first fixture to begin monitoring lamp hours.</div>
+                <button onClick={()=>setShowModal(true)} style={S.addBtn}>+ ADD FIXTURE</button>
+              </div>
+            )}
+
+            {/* Grid */}
+            <div style={S.grid}>
+              {filtered.map(f=>{
+                const sc = statusColor(f.pct);
+                const projDate = new Date(Date.now() + f.daysRemaining*86400000);
+                const fmt = d => new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+                return (
+                  <div key={f.id} style={{...S.card, boxShadow:`0 0 0 1px #1e2330, 0 0 24px ${sc.glow}`}}>
+                    <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+                      <Gauge pct={f.pct} color={sc.bar}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={S.cardModel}>
+                          {f.label && <span style={{color:"#4a8fff"}}>{f.label} · </span>}
+                          {f.model}
+                        </div>
+                        <div style={S.cardBrand}>{f.brand}</div>
+                        <div style={S.cardLamp}>{f.lamp}</div>
+                        <div style={{...S.badge, background:sc.bar+"22", color:sc.bar, borderColor:sc.bar+"55"}}>{sc.label}</div>
+                      </div>
+                    </div>
+
+                    <div style={S.statsRow}>
+                      {[
+                        {v:Math.round(f.hoursElapsed), k:"hrs elapsed"},
+                        {v:f.lampHours,                k:"rated hrs"},
+                        {v:f.pct>=100?"–":Math.round(f.hoursRemaining), k:"hrs left"},
+                        {v:f.pct>=100?"NOW":Math.round(f.daysRemaining)+"d", k:f.pct>=100?"change lamp":"until change"},
+                      ].map((s,i)=>(
+                        <div key={i} style={S.stat}>
+                          <div style={S.statV}>{s.v}</div>
+                          <div style={S.statK}>{s.k}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={S.progBg}>
+                      <div style={{...S.progFill,width:`${Math.min(f.pct,100)}%`,background:sc.bar}}/>
+                      {[65,85,100].map(t=><div key={t} style={{...S.progTick,left:`${t}%`}}/>)}
+                    </div>
+
+                    <div style={S.meta}>
+                      <span>Changed: {fmt(f.changedDate)}</span>
+                      <span>{effectiveHPW(f)} hrs/wk{globalHoursEnabled ? <span style={{color:"#4a6aaa",marginLeft:4}}>⚡</span> : null}</span>
+                      {f.pct<100 && <span>Replace by ~{fmt(projDate)}</span>}
+                    </div>
+
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>resetLamp(f.id)} style={S.resetBtn}>✓ LAMP CHANGED TODAY</button>
+                      <button onClick={()=>{setEditTarget(f);setShowModal(true);}} style={S.editBtn}>EDIT</button>
+                      <button onClick={()=>deleteFixture(f.id)} style={S.delBtn}>✕</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {showModal && (
+            <Modal
+              initial={editTarget}
+              onSave={editTarget ? updateFixture : addFixture}
+              onClose={()=>{setShowModal(false);setEditTarget(null);}}
+            />
+          )}
+
+          {showSettings && (
+            <SettingsModal
+              settings={settings}
+              onChange={setSettings}
+              onClose={()=>setShowSettings(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // ─── Settings Modal ───────────────────────────────────────────────────────
+    function SettingsModal({ settings, onChange, onClose }) {
+      const set = (path, val) => {
+        const parts = path.split('.');
+        onChange(prev => {
+          const next = {...prev};
+          if (parts.length === 1) next[parts[0]] = val;
+          else next[parts[0]] = {...prev[parts[0]], [parts[1]]: val};
+          return next;
+        });
+      };
+
+      const [slackStatus, setSlackStatus]   = useState(null);
+      const [resendStatus, setResendStatus] = useState(null);
+      const [saving, setSaving]             = useState(false);
+
+      const handleSave = () => {
+        setSaving(true);
+        if (window.electronAPI) window.electronAPI.saveSettings(settings);
+        setTimeout(() => { setSaving(false); onClose(); }, 600);
+      };
+
+      const testSlack = async () => {
+        setSlackStatus('testing');
+        const r = await window.electronAPI?.testSlack(settings.slack.webhookUrl);
+        setSlackStatus(r?.ok ? 'ok' : 'fail');
+      };
+
+      const testResend = async () => {
+        setResendStatus('testing');
+        const r = await window.electronAPI?.testResend(settings.resend);
+        setResendStatus(r?.ok ? 'ok' : (r?.error || 'fail'));
+      };
+
+      const statusBadge = (s) => {
+        if (!s) return null;
+        if (s==='testing') return <span style={{color:"#4a8fff",fontSize:10,marginLeft:8}}>SENDING…</span>;
+        if (s==='ok')      return <span style={{color:"#3edd8e",fontSize:10,marginLeft:8}}>✓ SENT</span>;
+        return <span style={{color:"#ff4444",fontSize:10,marginLeft:8,maxWidth:300,display:"inline-block",wordBreak:"break-all"}}>✕ {s==='fail'?'FAILED':s}</span>;
+      };
+
+      const Divider = () => <div style={{borderTop:"1px solid #1a2540",margin:"16px 0"}}/>;
+      const SectionHead = ({children}) => <div style={{fontSize:10,letterSpacing:3,color:"#3a5a8a",marginBottom:12,marginTop:4}}>{children}</div>;
+
+      return (
+        <div style={S.overlay}>
+          <div style={{...S.modal, maxHeight:"90vh", overflowY:"auto"}}>
+            <div style={S.mHead}>
+              <span style={S.mTitle}>SETTINGS</span>
+              <button onClick={onClose} style={S.closeBtn}>✕</button>
+            </div>
+
+            {/* ── System ── */}
+            <SectionHead>SYSTEM</SectionHead>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+              <input type="checkbox" id="startup" checked={!!settings.startup}
+                onChange={e=>set('startup', e.target.checked)} style={{cursor:"pointer",accentColor:"#4a8fff"}}/>
+              <label htmlFor="startup" style={{...S.lbl,marginBottom:0,cursor:"pointer"}}>RUN ON STARTUP</label>
+            </div>
+            <p style={S.hint}>LampWatch launches hidden in the system tray when you log in, so notifications work without opening the app.</p>
+
+            <Divider/>
+
+            {/* ── Slack ── */}
+            <SectionHead>SLACK NOTIFICATIONS</SectionHead>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <input type="checkbox" id="slackOn" checked={!!settings.slack?.enabled}
+                onChange={e=>set('slack.enabled', e.target.checked)} style={{cursor:"pointer",accentColor:"#4a8fff"}}/>
+              <label htmlFor="slackOn" style={{...S.lbl,marginBottom:0,cursor:"pointer"}}>ENABLE SLACK</label>
+            </div>
+            <label style={S.lbl}>INCOMING WEBHOOK URL</label>
+            <input style={{...S.inp, opacity: settings.slack?.enabled ? 1 : 0.4}}
+              disabled={!settings.slack?.enabled}
+              value={settings.slack?.webhookUrl||''}
+              onChange={e=>set('slack.webhookUrl', e.target.value)}
+              placeholder="https://hooks.slack.com/services/…"/>
+            <p style={S.hint}>
+              In Slack: Apps → Incoming Webhooks → Add → pick a channel → copy the URL.
+              Alerts are batched into one message per check so you won't get spammed.
+            </p>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <button onClick={testSlack} disabled={!settings.slack?.enabled||!settings.slack?.webhookUrl}
+                style={{...S.editBtn, opacity:settings.slack?.enabled&&settings.slack?.webhookUrl?1:0.4}}>
+                SEND TEST
+              </button>
+              {statusBadge(slackStatus)}
+            </div>
+
+            <Divider/>
+
+            {/* ── Resend ── */}
+            <SectionHead>EMAIL NOTIFICATIONS — RESEND</SectionHead>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <input type="checkbox" id="resendOn" checked={!!settings.resend?.enabled}
+                onChange={e=>set('resend.enabled', e.target.checked)} style={{cursor:"pointer",accentColor:"#4a8fff"}}/>
+              <label htmlFor="resendOn" style={{...S.lbl,marginBottom:0,cursor:"pointer"}}>ENABLE EMAIL</label>
+            </div>
+            <p style={S.hint}>
+              Sign up free at <strong style={{color:"#4a8fff"}}>resend.com</strong> → API Keys → Create API Key → paste below.
+              No domain setup needed to get started — use the default from address while testing.
+            </p>
+            <label style={{...S.lbl, opacity:settings.resend?.enabled?1:0.5}}>API KEY</label>
+            <input style={{...S.inp, opacity:settings.resend?.enabled?1:0.4, fontFamily:"monospace"}}
+              disabled={!settings.resend?.enabled}
+              type="password"
+              value={settings.resend?.apiKey||''}
+              onChange={e=>set('resend.apiKey', e.target.value)}
+              placeholder="re_xxxxxxxxxxxxxxxxxxxx"/>
+            <label style={{...S.lbl, opacity:settings.resend?.enabled?1:0.5}}>SEND ALERTS TO</label>
+            <input style={{...S.inp, opacity:settings.resend?.enabled?1:0.4}}
+              disabled={!settings.resend?.enabled}
+              type="email"
+              value={settings.resend?.to||''}
+              onChange={e=>set('resend.to', e.target.value)}
+              placeholder="you@yourchurch.com"/>
+            <label style={{...S.lbl, opacity:settings.resend?.enabled?1:0.5}}>FROM ADDRESS <span style={{color:"#2a4060"}}>(optional)</span></label>
+            <input style={{...S.inp, opacity:settings.resend?.enabled?1:0.4}}
+              disabled={!settings.resend?.enabled}
+              type="email"
+              value={settings.resend?.from||''}
+              onChange={e=>set('resend.from', e.target.value)}
+              placeholder="LampWatch <onboarding@resend.dev>"/>
+            <p style={S.hint}>Leave "from" blank to use Resend's default. To send from your own address, add your domain in the Resend dashboard under Domains.</p>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <button onClick={testResend}
+                disabled={!settings.resend?.enabled||!settings.resend?.apiKey||!settings.resend?.to}
+                style={{...S.editBtn, opacity:settings.resend?.enabled&&settings.resend?.apiKey&&settings.resend?.to?1:0.4}}>
+                SEND TEST
+              </button>
+              {statusBadge(resendStatus)}
+            </div>
+
+            <Divider/>
+            <p style={{...S.hint, color:"#2a4060"}}>
+              Notifications fire at 80% (warning), 90% (critical), and 100%+ (overdue) of rated lamp hours,
+              batched into one message per check. Checks run hourly while LampWatch is in the tray.
+            </p>
+
+            <button onClick={handleSave} style={S.saveBtn}>{saving ? "SAVED ✓" : "SAVE SETTINGS"}</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Styles ───────────────────────────────────────────────────────────────
+    const S = {
+      root:      {minHeight:"100vh",background:"#0b0e17",fontFamily:"'JetBrains Mono',monospace",color:"#c8d4e8",position:"relative"},
+      scanlines: {position:"fixed",inset:0,pointerEvents:"none",background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px)",zIndex:0},
+      wrap:      {position:"relative",zIndex:1,maxWidth:1160,margin:"0 auto",padding:"28px 24px 48px"},
+      header:    {display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:24,flexWrap:"wrap",gap:12},
+      logo:      {display:"flex",alignItems:"center",gap:10,marginBottom:4},
+      logoIcon:  {color:"#4a8fff",fontSize:24},
+      logoText:  {fontSize:30,fontWeight:800,letterSpacing:5,color:"#e8edf5"},
+      logoAccent:{color:"#4a8fff"},
+      subhead:   {fontSize:10,letterSpacing:4,color:"#3a4a6a",textTransform:"uppercase"},
+      addBtn:    {background:"linear-gradient(135deg,#1a4fff,#0d30cc)",border:"none",borderRadius:4,color:"#fff",padding:"9px 18px",fontSize:11,letterSpacing:2,cursor:"pointer",fontFamily:"inherit",fontWeight:700},
+      gearBtn:   {background:"#0f1420",border:"1px solid #1e2a40",borderRadius:4,color:"#4a6a9a",padding:"9px 13px",fontSize:16,cursor:"pointer",fontFamily:"inherit",lineHeight:1},
+      summaryBar:{display:"flex",gap:8,marginBottom:22,flexWrap:"wrap",alignItems:"center"},
+      chip:      {display:"flex",alignItems:"center",gap:6,background:"#0f1420",border:"1px solid",borderRadius:4,padding:"6px 12px",fontSize:10,letterSpacing:2,cursor:"pointer",fontFamily:"inherit",fontWeight:700,transition:"all 0.15s"},
+      dot:       {width:7,height:7,borderRadius:"50%",flexShrink:0},
+      chipCount: {background:"#1a2035",borderRadius:3,padding:"2px 6px",fontSize:10},
+      sortSel:   {background:"#0f1420",border:"1px solid #1e2a40",borderRadius:4,color:"#8899bb",padding:"6px 10px",fontSize:10,fontFamily:"inherit",letterSpacing:1,cursor:"pointer"},
+      grid:      {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(330px,1fr))",gap:16},
+      card:      {background:"linear-gradient(160deg,#0f1520,#0b0f1a)",border:"1px solid #1e2a40",borderRadius:8,padding:16,display:"flex",flexDirection:"column",gap:12},
+      cardModel: {fontSize:14,fontWeight:700,color:"#dde8f5",marginBottom:2,lineHeight:1.3},
+      cardBrand: {fontSize:10,color:"#3a4a6a",letterSpacing:2,marginBottom:4},
+      cardLamp:  {fontSize:10,color:"#506070",marginBottom:8},
+      badge:     {display:"inline-block",fontSize:9,fontWeight:800,letterSpacing:2,padding:"3px 8px",borderRadius:3,border:"1px solid"},
+      statsRow:  {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8},
+      stat:      {textAlign:"center",background:"#0a0d15",borderRadius:4,padding:"8px 4px"},
+      statV:     {fontSize:16,fontWeight:800,color:"#dde8f5",lineHeight:1.1},
+      statK:     {fontSize:8,color:"#3a4a6a",letterSpacing:1,marginTop:2},
+      progBg:    {height:6,background:"#1a2035",borderRadius:3,position:"relative",overflow:"hidden"},
+      progFill:  {height:"100%",borderRadius:3,transition:"width 0.6s ease"},
+      progTick:  {position:"absolute",top:0,width:1,height:"100%",background:"#0b0e17",opacity:0.6},
+      meta:      {display:"flex",gap:12,fontSize:9,color:"#3a4a6a",letterSpacing:1,flexWrap:"wrap"},
+      resetBtn:  {flex:1,background:"linear-gradient(135deg,#0d3d22,#0a2e1a)",border:"1px solid #1a6040",borderRadius:4,color:"#3edd8e",padding:"7px 0",fontSize:10,letterSpacing:2,cursor:"pointer",fontFamily:"inherit",fontWeight:700},
+      editBtn:   {background:"#0f1520",border:"1px solid #2a3a5a",borderRadius:4,color:"#8899bb",padding:"7px 14px",fontSize:10,letterSpacing:2,cursor:"pointer",fontFamily:"inherit"},
+      delBtn:    {background:"#0f1520",border:"1px solid #3a1a1a",borderRadius:4,color:"#664444",padding:"7px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"},
+      empty:     {textAlign:"center",padding:"80px 20px",display:"flex",flexDirection:"column",alignItems:"center"},
+      // Modal
+      overlay:   {position:"fixed",inset:0,background:"rgba(5,8,16,0.88)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16},
+      modal:     {background:"linear-gradient(160deg,#0f1520,#0b0f1a)",border:"1px solid #2a3a5a",borderRadius:8,padding:24,width:"100%",maxWidth:430,maxHeight:"90vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:10},
+      mHead:     {display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4},
+      mTitle:    {fontSize:13,fontWeight:800,letterSpacing:4,color:"#4a8fff"},
+      closeBtn:  {background:"none",border:"none",color:"#4a5a7a",fontSize:16,cursor:"pointer"},
+      lbl:       {fontSize:9,letterSpacing:3,color:"#4a5a7a",display:"block",marginBottom:4},
+      inp:       {width:"100%",background:"#080c14",border:"1px solid #1e2a40",borderRadius:4,color:"#c8d4e8",padding:"9px 12px",fontSize:12,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:8},
+      specBox:   {background:"#080c14",border:"1px solid #1a2540",borderRadius:4,padding:"8px 12px",display:"flex",flexDirection:"column",gap:4,marginBottom:8},
+      specItem:  {fontSize:10,color:"#607090"},
+      specKey:   {color:"#4a8fff",marginRight:8,letterSpacing:1},
+      hint:      {fontSize:9,color:"#2a3a5a",letterSpacing:1,marginBottom:4},
+      saveBtn:   {background:"linear-gradient(135deg,#1a4fff,#0d30cc)",border:"none",borderRadius:4,color:"#fff",padding:11,fontSize:12,letterSpacing:3,cursor:"pointer",fontFamily:"inherit",fontWeight:700,marginTop:4},
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
