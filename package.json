@@ -12,13 +12,15 @@
     "appId": "com.lampwatch.app",
     "productName": "LampWatch",
     "icon": "assets/icon.png",
-    "afterSign": "notarize.js",
     "mac": {
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "entitlements.plist",
       "entitlementsInherit": "entitlements.plist",
+      "notarize": {
+        "teamId": "847783NWJ2"
+      },
       "target": [
         {
           "target": "dmg",
