@@ -30,4 +30,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('dmx-tick', handler);
     return () => ipcRenderer.removeListener('dmx-tick', handler);
   },
+  onDMXError: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('dmx-error', handler);
+    return () => ipcRenderer.removeListener('dmx-error', handler);
+  },
 });

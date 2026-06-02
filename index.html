@@ -252,6 +252,7 @@
       const [showSettings, setShowSettings]       = useState(false);
       const [settings, setSettings]               = useState({ startup:true, slack:{enabled:false,webhookUrl:''}, resend:{enabled:false,apiKey:'',to:'',from:''}, dmxMaster:{enabled:false,protocol:'sacn',universe:1,channel:1,nic:''} });
       const [dmxActive, setDmxActive]             = useState(false);
+      const [dmxError,  setDmxError]              = useState(null);
       const [accumulatedSeconds, setAccumulatedSeconds] = useState({});
 
       // Effective hours/week for a fixture (global override or per-fixture)
@@ -278,9 +279,10 @@
           setDmxActive(active);
           if (accumulated) setAccumulatedSeconds(accumulated);
         });
-        const unsubState = window.electronAPI.onDMXStateChange(({ active }) => setDmxActive(active));
+        const unsubState = window.electronAPI.onDMXStateChange(({ active }) => { setDmxActive(active); setDmxError(null); });
         const unsubTick  = window.electronAPI.onDMXTick(data => setAccumulatedSeconds(data));
-        return () => { unsubState?.(); unsubTick?.(); };
+        const unsubError = window.electronAPI.onDMXError?.(({ message }) => setDmxError(message));
+        return () => { unsubState?.(); unsubTick?.(); unsubError?.(); };
       // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [loaded]);
 
@@ -354,10 +356,10 @@
               </div>
               <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 {dmxEnabled && (
-                  <div style={{display:"flex",alignItems:"center",gap:7,background:"#0a0d14",border:`1px solid ${dmxActive?"#1a4a2a":"#1a2540"}`,borderRadius:4,padding:"7px 12px"}}>
-                    <div style={{width:9,height:9,borderRadius:"50%",background:dmxActive?"#3edd8e":"#2a3a4a",flexShrink:0,animation:dmxActive?"lampPulse 1.5s ease-in-out infinite":"none"}}/>
-                    <span style={{fontSize:10,letterSpacing:2,fontWeight:800,color:dmxActive?"#3edd8e":"#3a4a6a"}}>
-                      {dmxActive?"LAMP ON":"LAMP OFF"}
+                  <div style={{display:"flex",alignItems:"center",gap:7,background:"#0a0d14",border:`1px solid ${dmxError?"#6a1a1a":dmxActive?"#1a4a2a":"#1a2540"}`,borderRadius:4,padding:"7px 12px"}}>
+                    <div style={{width:9,height:9,borderRadius:"50%",background:dmxError?"#dd3e3e":dmxActive?"#3edd8e":"#2a3a4a",flexShrink:0,animation:dmxActive&&!dmxError?"lampPulse 1.5s ease-in-out infinite":"none"}}/>
+                    <span style={{fontSize:10,letterSpacing:2,fontWeight:800,color:dmxError?"#dd3e3e":dmxActive?"#3edd8e":"#3a4a6a"}} title={dmxError||undefined}>
+                      {dmxError?"DMX ERROR":dmxActive?"LAMP ON":"LAMP OFF"}
                     </span>
                   </div>
                 )}

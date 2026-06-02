@@ -119,15 +119,21 @@ function startSACNListener(config) {
       iface:      config.nicIp || undefined,
       reuseAddr:  true,
     });
+
     const onPacket = (packet) => {
-      if (packet.universe !== config.universe) return;
-      const slots = packet.slotsData || packet.payload;
-      const value = slots ? (slots[config.channel - 1] || 0) : 0;
+      const buf   = packet.payloadAsBuffer;
+      const value = buf ? (buf[config.channel - 1] || 0) : 0;
       handleDMXValue(value);
     };
     sacnReceiver.on('packet',   onPacket);
-    sacnReceiver.on('universe', onPacket); // compat with older sacn versions
-    sacnReceiver.on('error', (e) => console.error('[sACN]', e.message));
+    sacnReceiver.on('universe', onPacket);
+    sacnReceiver.on('error', (e) => {
+      console.error('[sACN] error:', e.message);
+      if (e.code === 'EADDRINUSE') {
+        if (win && !win.isDestroyed())
+          win.webContents.send('dmx-error', { message: 'Port 5568 is already in use. Quit any other sACN app (e.g. Prism) and re-save DMX settings.' });
+      }
+    });
   } catch (e) {
     console.error('[sACN] Failed to start:', e.message);
   }
