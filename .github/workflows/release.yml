@@ -1,0 +1,78 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to release (e.g. v1.0.5)'
+        required: true
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Import Developer ID certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+          security create-keychain -p "build" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "build" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "build" "$KEYCHAIN_PATH"
+
+      - name: Build & notarize (arm64 + x64)
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          name: LampWatch ${{ github.event.inputs.version || github.ref_name }}
+          draft: false
+          prerelease: false
+          body: |
+            ## LampWatch ${{ github.event.inputs.version || github.ref_name }}
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Apple Silicon (M1/M2/M3/M4) | `LampWatch-*-arm64.dmg` |
+            | Intel Mac | `LampWatch-*.dmg` |
+
+            Both builds are signed with Developer ID and notarized by Apple — Gatekeeper will clear them on first launch.
+
+            ### Changes
+            - Fix DMX sACN input: switch to `payloadAsBuffer` for correct 0-indexed channel read
+            - Show "DMX ERROR" indicator in header when port 5568 is already in use (e.g. Prism running)
+
+            ### Install
+            1. Download the DMG for your Mac
+            2. Open it and drag LampWatch to Applications
+          files: |
+            dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
