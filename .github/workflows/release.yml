@@ -45,7 +45,10 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run dist
+          # Prevent electron-builder from publishing itself — release step handles that
+          EP_PRE_RELEASE: false
+          PUBLISH: never
+        run: npm run dist -- --publish never
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
