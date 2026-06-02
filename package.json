@@ -1,6 +1,6 @@
 {
   "name": "lampwatch",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "Fixture lamp hour tracking for live production",
   "main": "main.js",
   "scripts": {
