@@ -52,6 +52,7 @@
     "electron-builder": "^24.0.0"
   },
   "dependencies": {
-    "nodemailer": "^8.0.10"
+    "nodemailer": "^8.0.10",
+    "sacn": "^4.6.2"
   }
 }

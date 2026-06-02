@@ -21,6 +21,10 @@
     ::-webkit-scrollbar-thumb { background: #1e2a40; border-radius: 3px; }
     input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.4); cursor: pointer; }
     select option { background: #0f1520; }
+    @keyframes lampPulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(62,221,142,0.6); }
+      50%       { opacity: 0.7; box-shadow: 0 0 0 5px rgba(62,221,142,0); }
+    }
   </style>
 </head>
 <body>
@@ -96,6 +100,15 @@
     const genId = () => Math.random().toString(36).slice(2, 10);
 
     const calcStatus = (entry) => {
+      if (entry._dmxMode) {
+        const hoursElapsed   = (entry.accumulatedSeconds || 0) / 3600;
+        const pct            = (hoursElapsed / entry.lampHours) * 100;
+        const hoursRemaining = Math.max(0, entry.lampHours - hoursElapsed);
+        // Project using the configured rate — accumulated rate is noisy at low hours
+        const hpw            = entry.hoursPerWeek || 10;
+        const daysRemaining  = hoursRemaining / (hpw / 7);
+        return { pct, hoursElapsed, hoursRemaining, daysRemaining };
+      }
       const now = new Date();
       const changed = new Date(entry.changedDate);
       const daysElapsed = Math.max(0, (now - changed) / (1000 * 60 * 60 * 24));
@@ -134,7 +147,7 @@
     }
 
     // ─── Add/Edit Modal ───────────────────────────────────────────────────────
-    function Modal({ initial, onSave, onClose }) {
+    function Modal({ initial, onSave, onClose, dmxEnabled }) {
       const [brand, setBrand]           = useState(initial?.brand || "Martin");
       const [modelIdx, setModelIdx]     = useState(0);
       const [isCustom, setIsCustom]     = useState(initial ? initial.isCustom===true : false);
@@ -207,9 +220,12 @@
             <label style={S.lbl}>LAMP CHANGED DATE</label>
             <input style={S.inp} type="date" value={changedDate} onChange={e=>setChangedDate(e.target.value)}/>
 
-            <label style={S.lbl}>AVG HOURS ON PER WEEK</label>
-            <input style={S.inp} type="number" value={hoursPerWeek} onChange={e=>setHoursPerWeek(e.target.value)} min={0.5} max={168} step={0.5}/>
-            <p style={S.hint}>Include rehearsals, services, and programming time</p>
+            {!dmxEnabled && (<>
+              <label style={S.lbl}>AVG HOURS ON PER WEEK</label>
+              <input style={S.inp} type="number" value={hoursPerWeek} onChange={e=>setHoursPerWeek(e.target.value)} min={0.5} max={168} step={0.5}/>
+              <p style={S.hint}>Include rehearsals, services, and programming time</p>
+            </>)}
+            {dmxEnabled && <p style={{...S.hint,color:"#3a6a3a",marginBottom:8}}>⚡ DMX Master is active — hours are tracked in real time from the DMX channel.</p>}
 
             {!initial && (<>
               <label style={S.lbl}>QUANTITY</label>
@@ -234,7 +250,9 @@
       const [globalHours, setGlobalHours]         = useState(10);
       const [globalHoursEnabled, setGlobalHoursEnabled] = useState(false);
       const [showSettings, setShowSettings]       = useState(false);
-      const [settings, setSettings]               = useState({ startup:true, slack:{enabled:false,webhookUrl:''}, resend:{enabled:false,apiKey:'',to:'',from:''} });
+      const [settings, setSettings]               = useState({ startup:true, slack:{enabled:false,webhookUrl:''}, resend:{enabled:false,apiKey:'',to:'',from:''}, dmxMaster:{enabled:false,protocol:'sacn',universe:1,channel:1,nic:''} });
+      const [dmxActive, setDmxActive]             = useState(false);
+      const [accumulatedSeconds, setAccumulatedSeconds] = useState({});
 
       // Effective hours/week for a fixture (global override or per-fixture)
       const effectiveHPW = f => (globalHoursEnabled && globalHours) ? Number(globalHours) : f.hoursPerWeek;
@@ -252,6 +270,19 @@
         }
         setLoaded(true);
       }, []);
+
+      // Sync DMX state from main process on mount
+      useEffect(() => {
+        if (!loaded || !window.electronAPI) return;
+        window.electronAPI.getDMXState().then(({ active, accumulated }) => {
+          setDmxActive(active);
+          if (accumulated) setAccumulatedSeconds(accumulated);
+        });
+        const unsubState = window.electronAPI.onDMXStateChange(({ active }) => setDmxActive(active));
+        const unsubTick  = window.electronAPI.onDMXTick(data => setAccumulatedSeconds(data));
+        return () => { unsubState?.(); unsubTick?.(); };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [loaded]);
 
       // Save to localStorage + sync to file for background notifications
       useEffect(() => {
@@ -271,11 +302,20 @@
 
       const resetLamp = id => {
         const fx = fixtures.find(x=>x.id===id);
-        setFixtures(p=>p.map(x=>x.id===id ? {...x, changedDate:new Date().toISOString().slice(0,10)} : x));
+        setFixtures(p=>p.map(x=>x.id===id ? {...x, changedDate:new Date().toISOString().slice(0,10), accumulatedSeconds:0} : x));
+        setAccumulatedSeconds(prev => ({...prev, [id]: 0}));
+        if (window.electronAPI) window.electronAPI.resetFixtureTimer(id);
         sendNotif("Lamp Reset ✓", `${fx?.model}${fx?.label ? " ("+fx.label+")" : ""} — timer reset to today.`);
       };
 
-      const withStatus = fixtures.map(f => ({...f, ...calcStatus({...f, hoursPerWeek: effectiveHPW(f)})}));
+      const dmxEnabled = settings.dmxMaster?.enabled;
+      const withStatus = fixtures.map(f => {
+        const secs = accumulatedSeconds[f.id] !== undefined ? accumulatedSeconds[f.id] : (f.accumulatedSeconds || 0);
+        const entry = dmxEnabled
+          ? { ...f, accumulatedSeconds: secs, hoursPerWeek: effectiveHPW(f), _dmxMode: true }
+          : { ...f, hoursPerWeek: effectiveHPW(f) };
+        return { ...f, accumulatedSeconds: secs, ...calcStatus(entry) };
+      });
       const overdue  = withStatus.filter(f=>f.pct>=100).length;
       const critical = withStatus.filter(f=>f.pct>=85&&f.pct<100).length;
       const warning  = withStatus.filter(f=>f.pct>=65&&f.pct<85).length;
@@ -313,6 +353,14 @@
                 <div style={S.subhead}>Fixture Lamp Hour Tracking System</div>
               </div>
               <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                {dmxEnabled && (
+                  <div style={{display:"flex",alignItems:"center",gap:7,background:"#0a0d14",border:`1px solid ${dmxActive?"#1a4a2a":"#1a2540"}`,borderRadius:4,padding:"7px 12px"}}>
+                    <div style={{width:9,height:9,borderRadius:"50%",background:dmxActive?"#3edd8e":"#2a3a4a",flexShrink:0,animation:dmxActive?"lampPulse 1.5s ease-in-out infinite":"none"}}/>
+                    <span style={{fontSize:10,letterSpacing:2,fontWeight:800,color:dmxActive?"#3edd8e":"#3a4a6a"}}>
+                      {dmxActive?"LAMP ON":"LAMP OFF"}
+                    </span>
+                  </div>
+                )}
                 <div style={{display:"flex",alignItems:"center",gap:8,background:"#0a0d14",border:`1px solid ${globalHoursEnabled?"#2a5aaa":"#1a2540"}`,borderRadius:4,padding:"7px 12px"}}>
                   <input type="checkbox" id="globalToggle" checked={globalHoursEnabled} onChange={e=>setGlobalHoursEnabled(e.target.checked)} style={{cursor:"pointer",accentColor:"#4a8fff"}}/>
                   <label htmlFor="globalToggle" style={{fontSize:10,letterSpacing:2,color:globalHoursEnabled?"#7aaaee":"#3a4a6a",cursor:"pointer",userSelect:"none"}}>GLOBAL HRS/WK</label>
@@ -374,14 +422,14 @@
                       </div>
                     </div>
 
-                    <div style={S.statsRow}>
+                    <div style={{...S.statsRow, '--stat-cols': dmxEnabled ? 3 : 4}}>
                       {[
-                        {v:Math.round(f.hoursElapsed), k:"hrs elapsed"},
-                        {v:f.lampHours,                k:"rated hrs"},
-                        {v:f.pct>=100?"–":Math.round(f.hoursRemaining), k:"hrs left"},
-                        {v:f.pct>=100?"NOW":Math.round(f.daysRemaining)+"d", k:f.pct>=100?"change lamp":"until change"},
+                        {v:Math.round(f.hoursElapsed),                              k:"hrs elapsed"},
+                        {v:f.lampHours,                                             k:"rated hrs"},
+                        {v:f.pct>=100?"–":Math.round(f.hoursRemaining),            k:"hrs left"},
+                        ...(!dmxEnabled ? [{v:f.pct>=100?"NOW":Math.round(f.daysRemaining)+"d", k:f.pct>=100?"change lamp":"until change"}] : []),
                       ].map((s,i)=>(
-                        <div key={i} style={S.stat}>
+                        <div key={i} style={{...S.stat, ...(dmxEnabled?{gridColumn: i===2?"span 1":""}:{})}}>
                           <div style={S.statV}>{s.v}</div>
                           <div style={S.statK}>{s.k}</div>
                         </div>
@@ -395,8 +443,9 @@
 
                     <div style={S.meta}>
                       <span>Changed: {fmt(f.changedDate)}</span>
-                      <span>{effectiveHPW(f)} hrs/wk{globalHoursEnabled ? <span style={{color:"#4a6aaa",marginLeft:4}}>⚡</span> : null}</span>
-                      {f.pct<100 && <span>Replace by ~{fmt(projDate)}</span>}
+                      {!dmxEnabled && <span>{effectiveHPW(f)} hrs/wk{globalHoursEnabled ? <span style={{color:"#4a6aaa",marginLeft:4}}>⚡</span> : null}</span>}
+                      {dmxEnabled && <span style={{color:"#3a5a3a"}}>{Math.round((accumulatedSeconds[f.id]||f.accumulatedSeconds||0)/3600*10)/10} hrs accumulated</span>}
+                      {!dmxEnabled && f.pct<100 && <span>Replace by ~{fmt(projDate)}</span>}
                     </div>
 
                     <div style={{display:"flex",gap:8}}>
@@ -415,6 +464,7 @@
               initial={editTarget}
               onSave={editTarget ? updateFixture : addFixture}
               onClose={()=>{setShowModal(false);setEditTarget(null);}}
+              dmxEnabled={dmxEnabled}
             />
           )}
 
@@ -444,6 +494,11 @@
       const [slackStatus, setSlackStatus]   = useState(null);
       const [resendStatus, setResendStatus] = useState(null);
       const [saving, setSaving]             = useState(false);
+      const [nics, setNics]                 = useState([]);
+
+      useEffect(() => {
+        if (window.electronAPI) window.electronAPI.getNICs().then(setNics);
+      }, []);
 
       const handleSave = () => {
         setSaving(true);
@@ -562,6 +617,48 @@
             </div>
 
             <Divider/>
+
+            {/* ── DMX Master Timer ── */}
+            <SectionHead>DMX MASTER TIMER</SectionHead>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <input type="checkbox" id="dmxOn" checked={!!settings.dmxMaster?.enabled}
+                onChange={e=>set('dmxMaster.enabled', e.target.checked)} style={{cursor:"pointer",accentColor:"#4a8fff"}}/>
+              <label htmlFor="dmxOn" style={{...S.lbl,marginBottom:0,cursor:"pointer"}}>ENABLE DMX MASTER</label>
+            </div>
+            <p style={S.hint}>
+              When enabled, all fixture timers are driven by a single DMX channel in real time.
+              The math-based estimate is completely disabled. Accumulated hours survive restarts.
+            </p>
+
+            <label style={{...S.lbl,opacity:settings.dmxMaster?.enabled?1:0.5}}>PROTOCOL</label>
+            <select style={{...S.inp,opacity:settings.dmxMaster?.enabled?1:0.4}} disabled={!settings.dmxMaster?.enabled}
+              value={settings.dmxMaster?.protocol||'sacn'} onChange={e=>set('dmxMaster.protocol',e.target.value)}>
+              <option value="sacn">sACN (E1.31)</option>
+              <option value="artnet">Art-Net</option>
+            </select>
+
+            <label style={{...S.lbl,opacity:settings.dmxMaster?.enabled?1:0.5}}>UNIVERSE</label>
+            <input style={{...S.inp,opacity:settings.dmxMaster?.enabled?1:0.4}} disabled={!settings.dmxMaster?.enabled}
+              type="number" min={1} max={32767} value={settings.dmxMaster?.universe||1}
+              onChange={e=>set('dmxMaster.universe',Number(e.target.value))}/>
+
+            <label style={{...S.lbl,opacity:settings.dmxMaster?.enabled?1:0.5}}>CHANNEL (1–512)</label>
+            <input style={{...S.inp,opacity:settings.dmxMaster?.enabled?1:0.4}} disabled={!settings.dmxMaster?.enabled}
+              type="number" min={1} max={512} value={settings.dmxMaster?.channel||1}
+              onChange={e=>set('dmxMaster.channel',Number(e.target.value))}/>
+
+            <label style={{...S.lbl,opacity:settings.dmxMaster?.enabled?1:0.5}}>NETWORK INTERFACE</label>
+            <select style={{...S.inp,opacity:settings.dmxMaster?.enabled?1:0.4}} disabled={!settings.dmxMaster?.enabled}
+              value={settings.dmxMaster?.nic||''} onChange={e=>set('dmxMaster.nic',e.target.value)}>
+              <option value="">Select interface…</option>
+              {nics.map(n=><option key={n.ip} value={n.name}>{n.label}</option>)}
+            </select>
+            <p style={S.hint}>
+              Select the NIC connected to your lighting network (MA Net, Art-Net subnet, etc.).
+              For sACN, the app joins the multicast group for your universe on this interface.
+            </p>
+
+            <Divider/>
             <p style={{...S.hint, color:"#2a4060"}}>
               Notifications fire at 80% (warning), 90% (critical), and 100%+ (overdue) of rated lamp hours,
               batched into one message per check. Checks run hourly while LampWatch is in the tray.
@@ -597,7 +694,7 @@
       cardBrand: {fontSize:10,color:"#3a4a6a",letterSpacing:2,marginBottom:4},
       cardLamp:  {fontSize:10,color:"#506070",marginBottom:8},
       badge:     {display:"inline-block",fontSize:9,fontWeight:800,letterSpacing:2,padding:"3px 8px",borderRadius:3,border:"1px solid"},
-      statsRow:  {display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8},
+      statsRow:  {display:"grid",gridTemplateColumns:"repeat(var(--stat-cols,4),1fr)",gap:8},
       stat:      {textAlign:"center",background:"#0a0d15",borderRadius:4,padding:"8px 4px"},
       statV:     {fontSize:16,fontWeight:800,color:"#dde8f5",lineHeight:1.1},
       statK:     {fontSize:8,color:"#3a4a6a",letterSpacing:1,marginTop:2},
